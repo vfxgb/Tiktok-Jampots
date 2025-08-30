@@ -182,6 +182,7 @@ docker-compose up --build
 ### 2) Frontend (Next.js)
 ```bash
 cd prismchatfrontend
+cd prismchat
 npm install
 npm run dev
 # Next.js at http://localhost:3000
