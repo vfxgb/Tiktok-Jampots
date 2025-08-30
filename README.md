@@ -1,338 +1,267 @@
-# Tiktok-Jampots
+# 🛡️ PrismGuard
 
-We are the Tiktok-Jampot and we have decided to tackle issues pertaining to Personally Identifiable Information pertaining to LLM-powered Applications (Problem Statement 7). In this case, we decided to look at chatbots that send text or image prompts to external LLM APIs. Our solution is called PrismGuard.
-
-# 🛡 PrismGuard
 **Multi-Modal Privacy Firewall for the AI Era**
 
-PrismGuard is a two-layer system that protects Personally Identifiable Information (PII) before it ever reaches an external AI service. 
-Think of it as a **VPN for your prompts and images**: everything you send to an LLM or AI API first passes through PrismGuard, where sensitive details are detected, anonymized, and logged transparently.
-
-⸻
-
-# PrismChat + PrismGuard 🔒🤖
-
-A **privacy-first conversational AI platform** combining a **Next.js chat frontend** with a **Dockerized FastAPI backend**. It integrates **LangChain/LangGraph** for reasoning and memory, **LangSmith** for tracing, and **Supabase** (Postgres + Storage) for persistence.  
-When **PrismGuard** is enabled, we apply **PII redaction** for **text and images** before any request reaches the LLM.
+PrismGuard is a comprehensive privacy-first conversational AI platform that protects Personally Identifiable Information (PII) before it ever reaches external AI services. Think of it as a **VPN for your prompts and images** - everything passes through PrismGuard's privacy layers first.
 
 ---
 
-## 🧭 Table of Contents
-
-- [Overview](#-overview)
-- [Architecture](#-architecture)
-- [Features](#-features)
-- [Tech Stack](#-tech-stack)
-- [Environment Variables](#-environment-variables)
-- [Local Development](#-local-development)
-- [API Summary](#-api-summary)
-- [Supabase Schema & Storage](#-supabase-schema--storage)
-- [PrismGuard Models](#-prismguard-models)
-- [How Redaction Works](#-how-redaction-works)
-- [Example Flows](#-example-flows)
-- [Roadmap](#-roadmap)
-- [License](#-license)
-
----
-
-## 🚀 Overview
-
-**PrismChat** is a chat experience built with **Next.js** that talks to a **FastAPI** backend.  
-The backend orchestrates a conversation pipeline (LangChain Runnable + LangGraph) with **Google Gemini 2.0 Flash**.  
-
-**PrismGuard** is a privacy layer:
-- **Text PII**: a fine-tuned **TinyBERT (4L-312D)** NER model trained on the **AI4Privacy** dataset detects PII and **redacts it** *before* calling Gemini.
-- **Image PII**: a lightweight **vision pipeline** (OCR + OpenCV) blurs faces and sensitive text (e.g., IDs) and stores only **redacted** versions.
-
-Everything is **traced** with **LangSmith** for observability.
-
----
-
-## 🏗 Architecture
+## 🏗️ Complete System Architecture
 
 ```mermaid
-flowchart TD
-    User[Next.js Chat UI] -->|/v1/chat & /v1/conversations| API
-    API["FastAPI (Docker)"] -->|Runnable| Gemini[Google Gemini 2.0 Flash]
-    API -->|LangGraph state| Memory[(Supabase Postgres: Conversation Store)]
-    API -->|Tracing| LangSmith[LangSmith]
-    API -->|uploads| RawBucket[(Supabase Storage: prismchat)]
-    API -->|redacted| RedBucket[(Supabase Storage: prismguard-redacted)]
-    API --> PrismGuard[Text & Vision Redaction]
-    PrismGuard --> TinyBERT[TinyBERT PII NER]
-    PrismGuard --> Vision[YOLO V8]
+graph TB
+    subgraph "Frontend Layer"
+        FE[Next.js Chat UI<br/>TypeScript + Tailwind<br/>Image Upload<br/>Markdown Chat]
+    end
+    
+    subgraph "Backend Layer"  
+        BE[PrismChat Backend :8000<br/>FastAPI + Docker<br/>LangChain/LangGraph<br/>LangSmith Tracing]
+    end
+    
+    subgraph "Privacy Gateway Layer"
+        GW[Gateway :8080<br/>Single Entry Point<br/>Audit Logging<br/>Auth & Storage]
+    end
+    
+    subgraph "PrismGuard Services"
+        VISION[Vision Service :8081<br/>YOLOv8 Detection<br/>Face & ID Blurring<br/>OCR Text Detection]
+        
+        LLM_GUARD[Text Guard :8082<br/>TinyBERT 4L-312D<br/>PII Detection<br/>Real-time Redaction]
+    end
+    
+    subgraph "External Services"
+        GEMINI[Google Gemini 2.0 Flash<br/>Fast Inference<br/>Multimodal AI]
+        
+        LANGSMITH[LangSmith<br/>Tracing & Analytics<br/>Observability]
+    end
+    
+    subgraph "Data Layer"
+        SB[(Supabase<br/>PostgreSQL<br/>File Storage<br/>RLS)]
+        
+        BUCKETS[(Storage Buckets<br/>prismchat raw<br/>prismguard-redacted<br/>Private + Signed URLs)]
+    end
+    
+    %% User Flow
+    FE -->|1. Chat Request| BE
+    BE -->|2. Privacy Check| GW
+    
+    %% Privacy Processing  
+    GW -->|3a. Image Anonymization| VISION
+    GW -->|3b. Text Anonymization| LLM_GUARD
+    
+    VISION -->|4a. Blurred Images| GW
+    LLM_GUARD -->|4b. Redacted Text| GW
+    
+    %% Storage & Processing
+    GW -->|5. Store Redacted Assets| BUCKETS
+    GW -->|6. Return Safe Content| BE
+    
+    %% AI Processing
+    BE -->|7. Safe Prompt + Images| GEMINI
+    GEMINI -->|8. AI Response| BE
+    
+    %% Persistence
+    BE -->|9. Chat History| SB
+    BE -->|10. Final Response| FE
+    
+    %% Observability
+    BE -.->|Tracing| LANGSMITH
+    GW -.->|Audit Logs| SB
+    
+    %% Styling
+    classDef frontend fill:#4F46E5,stroke:#312E81,stroke-width:2px,color:#fff
+    classDef backend fill:#059669,stroke:#064E3B,stroke-width:2px,color:#fff
+    classDef privacy fill:#DC2626,stroke:#991B1B,stroke-width:2px,color:#fff
+    classDef ai fill:#7C3AED,stroke:#5B21B6,stroke-width:2px,color:#fff
+    classDef storage fill:#EA580C,stroke:#9A3412,stroke-width:2px,color:#fff
+    
+    class FE frontend
+    class BE backend
+    class GW,VISION,LLM_GUARD privacy
+    class GEMINI,LANGSMITH ai
+    class SB,BUCKETS storage
 ```
 
 ---
 
-## ✨ Features
+## 🔄 Detailed Data Flow
 
-- **Chat UI (Next.js + Tailwind)**
-  - Multimodal: send text and images.
-  - Markdown rendering for AI replies.
-  - Conversation list (sidebar) + timestamps.
-
-- **FastAPI Backend**
-  - `/v1/chat` accepts `{ conversation_id, text?, images?[], prismguard? }`.
-  - Saves chat history to Postgres.
-  - Generates signed URLs for redacted images stored in Supabase.
-
-- **Reasoning & Memory**
-  - **LangChain Runnable** for prompt assembly.
-  - **LangGraph** for stateful control (entry → agent → END).
-  - Pulls short/structured history from Supabase.
-
-- **Privacy**
-  - **Text PII** detection with **TinyBERT 4L-312D** (IOB: `O`, `B-PII`, `I-PII`).
-  - **Image PII** redaction.
-  - Optional **TFLite** export (< 40 MB) for on-device use.
-
-- **Observability**
-  - **LangSmith** tracing for every step.
-
----
-
-## 🧰 Tech Stack
-
-**Frontend**
-- Next.js 14 (App Router), TypeScript
-- Tailwind CSS
-- `marked` + `DOMPurify` for safe Markdown rendering
-- `next/image` (with remote patterns for Supabase)
-
-**Backend**
-- FastAPI (Uvicorn)
-- LangChain, LangGraph
-- LangSmith (tracing)
-- Google Gemini (via `langchain-google-genai`)
-- Supabase Python client (`storage` + Postgres via `psycopg2`)
-- OpenCV, Tesseract (or compatible OCR) for image text detection
-
-**Data**
-- Supabase Postgres (chat history)
-- Supabase Storage:
-  - `prismchat/` (raw uploads if needed)
-  - `prismguard-redacted/{conversation_id}/...` (blurred output)
-
-**Models**
-- **LLM**: Google **Gemini 2.0 Flash**
-- **Text PII**: **TinyBERT (General 4L-312D)**, fine-tuned on **AI4Privacy PII-Masking**
-- **Vision**: YOLO V8
-
----
-
-## 🔧 Environment Variables
-
-### Backend (`prismchatbackend/.env`)
-```env
-# Supabase
-SUPABASE_URL=https://<project>.supabase.co
-SUPABASE_SERVICE_KEY=<service_role_key>
-PG_CONN_STR=postgresql://<user>:<pass>@<host>:5432/<db>
-
-# LLMs & Tracing
-GOOGLE_API_KEY=<gemini_api_key>
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=<langsmith_api_key>
-LANGCHAIN_PROJECT=prismchat
-
-# Storage
-RAW_BUCKET=prismchat
-RED_BUCKET=prismguard-redacted
-
-# Misc
-ENV=dev
+### 1️⃣ User Interaction
+```
+User types: "Hi, I'm John Doe, my SSN is 123-45-6789"
+User uploads: [ID_photo.jpg]
 ```
 
-### Frontend (`prismchatfrontend/.env.local`)
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon_key>
+### 2️⃣ Frontend Processing
+- **Next.js Chat UI** captures user input
+- Sends `POST /v1/chat` to PrismChat Backend
+- Includes: `conversation_id`, `text`, `images[]`, `prismguard: true`
+
+### 3️⃣ Backend Orchestration
+- **FastAPI Backend** receives request
+- Routes through **LangChain/LangGraph** pipeline
+- Forwards to **Gateway** for privacy processing
+
+### 4️⃣ Privacy Gateway Processing
+```
+POST /v1/gateway/text
+{
+  "text": "Hi, I'm John Doe, my SSN is 123-45-6789",
+  "mode": "strict"
+}
+
+POST /v1/gateway/image
+multipart/form-data: file=ID_photo.jpg
 ```
 
-Also update `next.config.js` to allow Supabase image domains:
-```js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "<project>.supabase.co",
-        pathname: "/storage/**",
-      },
-    ],
-  },
-};
-module.exports = nextConfig;
+### 5️⃣ Text Anonymization (TinyBERT 4L-312D)
+```python
+# Input Text Processing
+original = "Hi, I'm John Doe, my SSN is 123-45-6789"
+
+# Output
+redacted = "Hi, I'm John Doe, my SSN is [REDACTED]"
+
+```
+
+### 6️⃣ Image Anonymization (YOLOv8 + OpenCV)
+```python
+# Vision Pipeline
+1. YOLOv8 detects: faces, license plates, ID cards
+2. OCR extracts: text regions, ID numbers, addresses  
+3. OpenCV applies: Gaussian blur to detected regions
+4. Result: Fully anonymized image
+
+# Detected regions example
+entities = [
+  {"label": "face", "conf": 0.99, "bbox": [45, 23, 156, 134]},
+  {"label": "id_text", "conf": 0.87, "bbox": [200, 300, 400, 350]}
+]
+```
+
+### 7️⃣ Secure Storage
+```
+Original Image -> ❌ (Never stored)
+Redacted Image -> ✅ Supabase Storage
+Path: prismguard-redacted/{conversation_id}/image_uuid.png
+Access: Private bucket with signed URLs (24h expiry)
+```
+
+### 8️⃣ AI Processing
+```
+# What Gemini receives:
+text = "Hi, I'm [NAME], my SSN is [SSN]"
+images = ["https://supabase.co/storage/sign/redacted_image.png?token=..."]
+
+# What Gemini responds:
+"Hello! I understand you've shared some personal information. 
+I can help you with questions while keeping your privacy protected."
 ```
 
 ---
 
-## 🧪 Local Development
+## 🛠️ Tech Stack Deep Dive
 
-### 1) Backend (Docker)
+### Frontend Stack
+```typescript
+// Next.js 14 + TypeScript
+- App Router for modern routing
+- Tailwind CSS for styling  
+- Marked + DOMPurify for safe Markdown
+- Image optimization with next/image
+- Real-time chat interface
+```
+
+### Backend Stack
+```python
+# FastAPI + Python Ecosystem
+- LangChain: Prompt engineering & chains
+- LangGraph: Stateful conversation flow
+- LangSmith: Distributed tracing
+- Supabase Python Client: Database & storage
+- Google Gemini: Latest multimodal LLM
+```
+
+### Privacy Stack
+```python
+# PrismGuard Services
+- TinyBERT 4L-312D: Fine-tuned on AI4Privacy dataset
+- YOLOv8: Real-time object detection
+- OpenCV: Image processing & blurring
+- Tesseract OCR: Text extraction from images
+- FastAPI: High-performance API services
+```
+
+---
+
+## 🚀 Quick Start Guide
+
+### Prerequisites
 ```bash
-cd prismchatbackend
-docker-compose up --build
-# FastAPI at http://localhost:8000
+# Required
+- Docker & Docker Compose
+- Node.js 18+ 
+- Supabase account
+- Google AI API key
+- LangSmith account (optional)
 ```
 
-### 2) Frontend (Next.js)
+### 1️⃣ Environment Setup
 ```bash
-cd prismchatfrontend
-cd prismchat
+# Clone repository
+git clone https://github.com/your-org/prismguard
+cd prismguard
+
+# Copy environment template
+cp .env.example .env
+
+# Update .env with your keys
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-key
+GOOGLE_API_KEY=your-gemini-key
+LANGCHAIN_API_KEY=your-langsmith-key
+```
+
+### 2️⃣ Backend Services
+```bash
+# Start all privacy services
+docker-compose up -d --build
+
+# Services will be available at:
+# - Gateway: http://localhost:8080
+# - Vision: http://localhost:8081  
+# - Text Guard: http://localhost:8082
+# - PrismChat Backend: http://localhost:8000
+```
+
+### 3️⃣ Frontend
+```bash
+# Install and start Next.js
+cd prismchatfrontend2/prismchat
 npm install
 npm run dev
-# Next.js at http://localhost:3000
+
+# Frontend available at: http://localhost:3000
 ```
 
 ---
 
-## 🔌 API Summary
-
-### `POST /v1/chat`
-**Body (JSON or multipart for file uploads):**
-```json
-{
-  "conversation_id": "uuid-or-string",
-  "text": "Hello, my number is 555-1234",
-  "images": [],             // optional (backend also supports multipart file field)
-  "prismguard": true        // enable PII redaction
-}
-```
-
-**Response:**
-```json
-{
-  "conversation_id": "uuid-or-string",
-  "ai": "Hello! I’ve hidden sensitive details for your privacy.",
-  "page_refs": [],                // optional per retrieval
-  "page_image_urls": [],          // optional; signed URLs for redacted images
-  "debug": { "trace_id": "..." }  // if LangSmith enabled
-}
-```
-
-### `GET /v1/conversations`
-Returns a list: `{ id, title, created_at, updated_at }`.
-
-### `GET /v1/conversations/:id/messages`
-Returns chat history and (if applicable) and image URLs for the thread.
+### Architecture Decisions
+- **Microservices**: Independent scaling of privacy components
+- **FastAPI**: High-performance async Python APIs
+- **Supabase**: Postgres + Storage + Auth in one platform  
+- **Docker**: Consistent deployment across environments
+- **LangChain**: Standardized LLM orchestration
 
 ---
 
-## 🗄 Supabase Schema & Storage
+## 🙏 Acknowledgements
 
-### Table: `chat_messages`
-```sql
-CREATE TABLE IF NOT EXISTS chat_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  conversation_id TEXT NOT NULL,
-  sender TEXT NOT NULL CHECK (sender IN ('human','AI')),
-  content TEXT NOT NULL,
-  images JSONB DEFAULT '[]',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
-### Buckets
-- **`prismchat/`** – raw uploads (optional, if you store raw before redaction).
-- **`prismguard-redacted/{conversation_id}/<uuid>.png`** – only **blurred**/redacted outputs.
-  - The backend returns **signed URLs** to the frontend.
-
-> **RLS:** for hackathon speed we often enable permissive read/insert. For production, lock it down and serve via backend.
+- **AI4Privacy Dataset**: Training data for PII detection
+- **Hugging Face**: Transformer models and training infrastructure
+- **LangChain Ecosystem**: LLM orchestration and tracing
+- **Supabase**: Backend-as-a-Service platform
+- **Google AI**: Gemini multimodal capabilities
+- **Varun Gupta**: YOLOv8 model and dashcam anonymizer implementation ([dashcam_anonymizer](https://github.com/varungupta31/dashcam_anonymizer)) - our vision component builds upon this excellent work
 
 ---
-
-## 🧠 PrismGuard Models
-
-### Text (TinyBERT 4L-312D)
-- Fine-tuned on **AI4Privacy PII-Masking** (train/validation).
-- IOB labels: `O`, `B-PII`, `I-PII`.
-- Metrics (sample run): **P ~80%**, **R ~77%**, **F1 ~78%**.
-- Export path includes:
-  - `config.json`, `tokenizer.json`, `vocab.txt`, `tokenizer_config.json`
-  - `model.safetensors` (final weights)
-- Optional **TFLite** export (post-training quantization) to keep under **40 MB** for on-device.
-
-### Vision (YOLOv8 + Blur)
-- YOLOv8 detects sensitive regions directly (faces, IDs, license plates, text areas).
-- Heuristics + lightweight detectors mark faces/IDs.
-- Detected bounding boxes are passed to OpenCV, which applies Gaussian blur to those regions.
-
----
-
-## 🛡 How Redaction Works
-
-1. **Inbound request** → determine if `prismguard=true`.
-2. **Text path**:
-   - Run TinyBERT NER → convert IOB to spans → replace spans with placeholders (e.g., `[NAME]`, `[PHONE]`) or `█` blocks.
-   - Store **original** text only if policy allows (suggest **redacted-only** storage).
-3. **Image path**:
-   - Extract text regions (OCR) + detect faces/ID-like regions.
-   - Blur all sensitive regions with OpenCV.
-   - Save only **redacted** into `prismguard-redacted/{conversation_id}/...`.
-4. **LLM call**:
-   - Compose prompt using the **redacted** text and/or image.
-   - Provide **links to redacted images** if the LLM needs page context.
-5. **Trace**:
-   - All steps logged to **LangSmith** for debugging.
-
----
-
-## 🔄 Example Flows
-
-### A) Text-only
-1. User: “Hi, I’m John Doe, phone 555-1234.”
-2. PrismGuard NER → “Hi, I’m `[NAME]`, phone `[PHONE]`.”
-3. LLM answers normally (no PII leak).
-4. History stored; LangSmith shows redaction step.
-
-### B) With Image
-1. User uploads an ID photo.
-2. Vision pipeline blurs MRZ/ID/face as configured.
-3. Redacted image stored in Supabase.
-4. LLM receives only the **redacted** asset references.
-
----
-
-## 🧭 Roadmap
-
-- Dashboard for auditing conversations (filters, exports).
-- Optional **on-device** TFLite for browser/mobile (WebAssembly + WebNN where available).
-- Expand image pipeline to **video** + **audio** (ASR + redaction).
-- Robust **Supabase RLS** with user auth + tenant isolation.
-- Multi-region buckets + CDN caching for signed URLs.
-
----
-
-## 📜 License
-
-**MIT** — feel free to fork, remix, and ship privacy-first AI apps.
-
----
-
-## 📝 Quick Copy Commands
-
-### Frontend
-```bash
-cd prismchatfrontend
-npm install
-npm run dev
-```
-
-### Backend
-```bash
-cd prismchatbackend
-docker-compose up --build
-```
-
----
-
-## 🙌 Acknowledgements
-
-- **AI4Privacy** dataset for PII-Masking
-- **Hugging Face Transformers** for training
-- **LangChain / LangGraph / LangSmith**
-- **Supabase** for a great developer experience
+**🛡️ PrismGuard - Privacy-First AI for Everyone**
