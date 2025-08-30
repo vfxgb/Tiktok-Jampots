@@ -1,1 +1,9 @@
 .env
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Node/Next
+node_modules/
+.next/
