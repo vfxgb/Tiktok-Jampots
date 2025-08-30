@@ -84,7 +84,7 @@ flowchart TD
 
 - **Privacy**
   - **Text PII** detection with **TinyBERT 4L-312D** (IOB: `O`, `B-PII`, `I-PII`).
-  - **Image PII** redaction (faces + OCR text regions) with **OpenCV**.
+  - **Image PII** redaction.
   - Optional **TFLite** export (< 40 MB) for on-device use.
 
 - **Observability**
@@ -117,7 +117,7 @@ flowchart TD
 **Models**
 - **LLM**: Google **Gemini 2.0 Flash**
 - **Text PII**: **TinyBERT (General 4L-312D)**, fine-tuned on **AI4Privacy PII-Masking**
-- **Vision**: OCR + OpenCV (blur) pipeline
+- **Vision**: YOLO V8
 
 ---
 
@@ -218,7 +218,7 @@ npm run dev
 Returns a list: `{ id, title, created_at, updated_at }`.
 
 ### `GET /v1/conversations/:id/messages`
-Returns chat history and (if applicable) redacted image URLs for the thread.
+Returns chat history and (if applicable) and image URLs for the thread.
 
 ---
 
@@ -274,9 +274,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
    - Extract text regions (OCR) + detect faces/ID-like regions.
    - Blur all sensitive regions with OpenCV.
    - Save only **redacted** into `prismguard-redacted/{conversation_id}/...`.
-   - Return **signed URLs** to frontend.
 4. **LLM call**:
-   - Compose prompt using the **redacted** text.
+   - Compose prompt using the **redacted** text and/or image.
    - Provide **links to redacted images** if the LLM needs page context.
 5. **Trace**:
    - All steps logged to **LangSmith** for debugging.
@@ -294,7 +293,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 ### B) With Image
 1. User uploads an ID photo.
 2. Vision pipeline blurs MRZ/ID/face as configured.
-3. Redacted image stored in Supabase; signed URL returned to UI.
+3. Redacted image stored in Supabase.
 4. LLM receives only the **redacted** asset references.
 
 ---
