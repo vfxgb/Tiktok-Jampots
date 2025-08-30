@@ -1,6 +1,6 @@
 # Tiktok-Jampots
 
-We are the Tiktok-Jampot and we have decided to tackle issues pertaining to Personally Identifiable Information pertaining to LLM-powered Applications. (Problem Statement 7) In this case, we decided to look at chatbots that send text or image prompts to external LLM APIs. Our solution is called PrismGuard.
+We are the Tiktok-Jampot and we have decided to tackle issues pertaining to Personally Identifiable Information pertaining to LLM-powered Applications (Problem Statement 7). In this case, we decided to look at chatbots that send text or image prompts to external LLM APIs. Our solution is called PrismGuard.
 
 # 🛡 PrismGuard
 **Multi-Modal Privacy Firewall for the AI Era**
