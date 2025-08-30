@@ -9,6 +9,8 @@ from psycopg2.extras import RealDictCursor, Json
 
 from supabase import create_client, Client
 
+import httpx
+
 from .schemas import ChatMessage
 
 # --- Environment ---
@@ -56,30 +58,64 @@ def _sb_client() -> Client:
   return _sb
 
 def ensure_bucket():
-  """Create bucket if missing; mark public."""
+  """Create bucket if missing (keep private by default)."""
   sb = _sb_client()
   try:
     buckets = sb.storage.list_buckets()
     names = {b.name for b in buckets}
     if SUPABASE_BUCKET not in names:
-      sb.storage.create_bucket(SUPABASE_BUCKET, public=True)
+      sb.storage.create_bucket(SUPABASE_BUCKET, public=False)
   except Exception as e:
     # Non-fatal in case of race
     print("ensure_bucket() warning:", e)
 
 def upload_image_bytes(filename: str, data: bytes, content_type: str = "application/octet-stream") -> str:
-  """Upload bytes to Supabase Storage and return a public URL."""
+  """Upload bytes to Supabase Storage (private bucket) and return a signed URL."""
   ensure_bucket()
   sb = _sb_client()
   safe_name = filename.replace(" ", "_")
   key = f"{uuid.uuid4().hex}-{safe_name}"
+
+  # Upload the object (private bucket path)
   sb.storage.from_(SUPABASE_BUCKET).upload(
     key,
     data,
     {"content-type": content_type, "upsert": False},
   )
-  url = sb.storage.from_(SUPABASE_BUCKET).get_public_url(key)
-  return url
+
+  # Try SDK signed URL first
+  try:
+    resp = sb.storage.from_(SUPABASE_BUCKET).create_signed_url(key, 60 * 60 * 24 * 7)
+    signed = (
+      (resp.get("signedURL") if isinstance(resp, dict) else None)
+      or (resp.get("signedUrl") if isinstance(resp, dict) else None)
+      or (resp.get("signed_url") if isinstance(resp, dict) else None)
+    )
+    if signed:
+      if not signed.startswith("http"):
+        base = SUPABASE_URL.rstrip("/") if SUPABASE_URL else ""
+        signed = f"{base}{signed}"
+      return signed
+  except Exception as e:
+    print("create_signed_url via SDK failed, falling back to REST:", e)
+
+  # Fallback: REST API sign
+  base = SUPABASE_URL.rstrip("/") if SUPABASE_URL else ""
+  sign_url = f"{base}/storage/v1/object/sign/{SUPABASE_BUCKET}/{key}"
+  headers = {
+    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+    "x-client-info": "prismchat-backend",
+    "Content-Type": "application/json",
+  }
+  r = httpx.post(sign_url, headers=headers, json={"expiresIn": 60 * 60 * 24 * 7})
+  r.raise_for_status()
+  payload = r.json()
+  signed = payload.get("signedURL") or payload.get("signedUrl") or payload.get("signed_url")
+  if not signed:
+    raise RuntimeError("Supabase did not return a signed URL")
+  if not signed.startswith("http"):
+    signed = f"{base}{signed}"
+  return signed
 
 # --- Chat history helpers (single-table design) ---
 def insert_message(conversation_id: uuid.UUID, role: str, content: str, images: Optional[List[str]] = None) -> ChatMessage:

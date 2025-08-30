@@ -47,20 +47,21 @@ def chat(payload: SendPayload):
         if not conv_id:
             raise HTTPException(status_code=400, detail="conversationId is required")
 
-        # store user message
-        if payload.text or payload.images:
-            insert_message(conv_id, role="user", content=payload.text or "", images=payload.images)
-
-        # fetch history
+        # 1) Fetch history BEFORE inserting the current user turn
+        #    so we don't double-inject the same user text into the LLM
         history = [m.model_dump(by_alias=True) for m in get_messages(conv_id)]
 
-        # run chain
+        # 2) Run chain with existing history + current user input (not yet persisted)
         prismguard = payload.route == "prismguard"
         answer = run_chain(history, payload.text, payload.images, prismguard=prismguard)
 
-        # store assistant message
+        # 3) Now persist the current user turn (if present), then the assistant reply
+        if payload.text or payload.images:
+            insert_message(conv_id, role="user", content=payload.text or "", images=payload.images)
+
         insert_message(conv_id, role="assistant", content=answer, images=[])
 
+        # 4) Return the updated thread
         msgs = get_messages(conv_id)
         return {"conversationId": conv_id, "messages": msgs}
     except Exception as e:

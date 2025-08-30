@@ -1,4 +1,16 @@
 from typing import List, Optional
+from typing import Union
+def _urls_to_gemini_parts(urls: Optional[List[str]]) -> List[dict]:
+    parts: List[dict] = []
+    if not urls:
+        return parts
+    for u in urls:
+        u = (u or "").strip()
+        if not u:
+            continue
+        parts.append({"type": "image_url", "image_url": u})
+    return parts
+
 import traceback
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -21,26 +33,33 @@ def _make_model() -> ChatGoogleGenerativeAI:
 def _history_to_messages(history: List[dict]) -> List:
     """Convert stored message dicts into LangChain messages.
 
-    Each history item should include: { role: 'user'|'assistant', content: str, images?: [str] }
-    We append image URLs as text references. (Upgrade to true multimodal later.)
+    For user turns, include both text and any prior image URLs as multimodal parts.
+    For assistant turns, include text only (Gemini expects assistant text normally).
+    Each history item: { role: 'user'|'assistant', content: str, images?: [str] }
     """
     msgs: List = []
     for m in history:
-        role = m.get("role")
+        role = (m.get("role") or "").strip().lower()
         if role not in ("user", "assistant"):
             continue
-        content = m.get("content") or ""
-        parts: List[str] = [content] if content else []
-        imgs = m.get("images") or []
-        if imgs:
-            parts.append("\n\nUser provided images:\n" + "\n".join(imgs))
-        text = "\n\n".join([p for p in parts if p])
-        if not text:
-            continue
+
+        content = (m.get("content") or "").strip()
+        images = m.get("images") or []
+
         if role == "user":
-            msgs.append(HumanMessage(content=text))
-        else:
-            msgs.append(AIMessage(content=text))
+            parts: List[dict] = []
+            if content:
+                parts.append({"type": "text", "text": content})
+            for u in images:
+                u = (u or "").strip()
+                if not u:
+                    continue
+                parts.append({"type": "image_url", "image_url": u})
+            if parts:
+                msgs.append(HumanMessage(content=parts))
+        else:  # assistant
+            if content:
+                msgs.append(AIMessage(content=content))
     return msgs
 
 
@@ -74,17 +93,21 @@ def run_chain(
     # Convert our stored rows to BaseMessages for the history slot
     history_msgs = _history_to_messages(history)
 
-    # Compose current user turn (text + image refs)
-    parts: List[str] = []
-    if user_text:
-        parts.append(user_text)
+    # Compose current user turn. If images are present, send Gemini multimodal parts.
     if user_images:
-        parts.append("\n\nUser provided images:\n" + "\n".join(user_images))
-    current_input = "\n\n".join(parts) if parts else ""
+        mm_parts: List[dict] = []
+        if user_text:
+            mm_parts.append({"type": "text", "text": user_text})
+        mm_parts.extend(_urls_to_gemini_parts(user_images))
+        # Render the conversation up to now (system + history), then append a HumanMessage with parts
+        rendered = prompt.format_messages(history=history_msgs, input="")
+        rendered.append(HumanMessage(content=mm_parts))
+    else:
+        # Text-only turn
+        current_input = user_text or ""
+        rendered = prompt.format_messages(history=history_msgs, input=current_input)
 
     try:
-        # Render prompt → list[BaseMessage]
-        rendered = prompt.format_messages(history=history_msgs, input=current_input)
         # Debug visibility
         try:
             print("[PrismChat] history size:", len(history_msgs))

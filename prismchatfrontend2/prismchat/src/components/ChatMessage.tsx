@@ -24,14 +24,13 @@ export default function ChatMessageView({ msg }: { msg: ChatMessage }) {
           {msg.images.map((url, i) => (
             <div
               key={i}
-              className="relative w-40 h-40 border border-slate-800 rounded-md overflow-hidden"
+              className="rounded border border-slate-800 p-1 overflow-auto max-h-[70vh]"
             >
-              <Image
+              <img
                 src={url}
                 alt={`img-${i}`}
-                fill
-                sizes="160px"
-                style={{ objectFit: "cover" }}
+                className="block max-w-full h-auto object-contain rounded"
+                loading="lazy"
               />
             </div>
           ))}
