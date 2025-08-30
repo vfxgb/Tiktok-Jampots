@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import RouteToggle from "./RouteToggle";
 import type { RouteMode } from "@/types/chat";
-import { sendMessage, uploadImages } from "@/lib/api";
+import { sendMessage, uploadImages, type UploadedImage } from "@/lib/api";
 
 export default function MessageInput({
   disabled,
@@ -25,10 +25,13 @@ export default function MessageInput({
   function pickFiles() {
     fileRef.current?.click();
   }
+
   function handleFiles(list: FileList | null) {
     if (!list) return;
     const arr = Array.from(list).slice(0, 6);
     setFiles((prev) => [...prev, ...arr]);
+    // Allow selecting the same file again immediately
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   async function doSend() {
@@ -36,18 +39,37 @@ export default function MessageInput({
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
 
-    let imageUrls: string[] = [];
+    // 1) Upload; when route===prismguard, server redacts before storing
+    let uploaded: UploadedImage[] = [];
     if (files.length) {
-      imageUrls = await uploadImages(files);
+      uploaded = await uploadImages(files, route === "prismguard");
     }
+
+    // 2) Send only storage URLs to backend; api.ts strips to storageUrl
     const res = await sendMessage({
       conversationId,
       route,
       text: trimmed,
-      images: imageUrls,
+      images: uploaded, // sendMessage handles conversion to plain URLs
     });
+
+    // 3) Keep UI showing ORIGINAL previews for the just-sent user turn
+    if (route === "prismguard" && uploaded.length) {
+      const previews = uploaded.map((u) => u.previewUrl ?? u.storageUrl);
+      for (let i = res.messages.length - 1; i >= 0; i--) {
+        const m = res.messages[i];
+        if (m.role === "user") {
+          res.messages[i] = { ...m, images: previews };
+          break;
+        }
+      }
+    }
+
+    // Reset input state so you can attach same file again
     setText("");
     setFiles([]);
+    if (fileRef.current) fileRef.current.value = "";
+
     onReply(res);
     inputRef.current?.focus();
   }

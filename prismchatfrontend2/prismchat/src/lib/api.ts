@@ -6,7 +6,16 @@ import type {
 } from "@/types/chat";
 import { v4 as uuidv4 } from "uuid";
 
-const BASE = "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+
+export type UploadedImage = {
+  storageUrl: string;   // what we persist/send to backend
+  previewUrl?: string;  // local blob URL for UI preview
+};
+
+function toUrlList(images?: (string | UploadedImage)[]): string[] {
+  return (images ?? []).map((i) => (typeof i === "string" ? i : i.storageUrl));
+}
 
 export async function listConversations(): Promise<ConversationSummary[]> {
   const res = await fetch(`${BASE}/v1/conversations`, { cache: "no-store" });
@@ -32,22 +41,36 @@ export async function getConversation(
   })) as ChatMessage[];
 }
 
-export async function uploadImages(files: File[]): Promise<string[]> {
+/** Upload files. When prismGuard is true, the server will redact before storing. */
+export async function uploadImages(
+  files: File[],
+  prismGuard = false
+): Promise<UploadedImage[]> {
   const fd = new FormData();
   files.forEach((f) => fd.append("files", f));
-  const res = await fetch(`${BASE}/v1/upload`, { method: "POST", body: fd });
-  if (!res.ok) throw new Error("Upload failed");
-  const data = await res.json();
-  return data.urls as string[];
+
+  const qs = prismGuard ? "?route=prismguard" : "";
+  const res = await fetch(`${BASE}/v1/upload${qs}`, { method: "POST", body: fd });
+  if (!res.ok) throw new Error(await res.text().catch(() => "Upload failed"));
+  const data = (await res.json()) as { urls: string[] };
+
+  return data.urls.map((u, i) => ({
+    storageUrl: u,                      // redacted when prismGuard=true
+    previewUrl: URL.createObjectURL(files[i]), // original, local-only for UI
+  }));
 }
 
-export async function sendMessage(payload: SendPayload): Promise<SendResult> {
+/** Send a message; only storage URLs are sent to backend/DB. */
+export async function sendMessage(
+  payload: Omit<SendPayload, "images"> & { images?: (string | UploadedImage)[] }
+): Promise<SendResult> {
   const conversationId = (payload as any).conversationId ?? uuidv4();
+
   const body = {
     conversation_id: conversationId,
-    route: (payload as any).route || "direct",
+    route: (payload as any).route || "direct", // set "prismguard" when toggle is ON
     text: (payload as any).text ?? "",
-    images: (payload as any).images ?? [],
+    images: toUrlList(payload.images),
   };
 
   const res = await fetch(`${BASE}/v1/chat`, {
@@ -69,5 +92,5 @@ export async function sendMessage(payload: SendPayload): Promise<SendResult> {
       images: m.images || [],
       createdAt: m.created_at || m.createdAt,
     })) as ChatMessage[],
-  } as SendResult;
+  };
 }

@@ -1,10 +1,5 @@
 from typing import List, Optional
 from typing import Union
-import traceback
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-
 def _urls_to_gemini_parts(urls: Optional[List[str]]) -> List[dict]:
     parts: List[dict] = []
     if not urls:
@@ -15,6 +10,13 @@ def _urls_to_gemini_parts(urls: Optional[List[str]]) -> List[dict]:
             continue
         parts.append({"type": "image_url", "image_url": u})
     return parts
+
+import traceback
+
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
 
 def _make_model() -> ChatGoogleGenerativeAI:
     """Instantiate the Gemini 2.0 Flash chat model.

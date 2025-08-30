@@ -1,8 +1,8 @@
-
-
 import os
 import uuid
 from typing import List
+import base64
+import httpx
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +13,15 @@ from psycopg2.extras import RealDictCursor
 from .chain import run_chain
 
 app = FastAPI(title="PrismChat Backend", version="0.1.0")
+
+PRISMGUARD_GATEWAY = os.getenv("PRISMGUARD_GATEWAY", "http://localhost:8080")
+
+async def _gateway_anonymize_image(file: UploadFile) -> dict:
+    async with httpx.AsyncClient(timeout=120) as cli:
+        files = {"file": (file.filename, await file.read(), file.content_type or "image/png")}
+        r = await cli.post(f"{PRISMGUARD_GATEWAY}/v1/gateway/image", files=files)
+        r.raise_for_status()
+        return r.json()
 
 # CORS
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
@@ -29,14 +38,31 @@ def healthz():
     return {"status": "ok"}
 
 @app.post("/v1/upload")
-async def upload(files: List[UploadFile] = File(...)):
+async def upload(files: List[UploadFile] = File(...), route: str = "default"):
     try:
         urls = []
-        for f in files:
-            data = await f.read()
-            url = upload_image_bytes(f.filename, data, f.content_type or "application/octet-stream")
-            urls.append(url)
+        if route == "prismguard":
+            for f in files:
+                data = await _gateway_anonymize_image(f)
+
+                if data.get("storage_url"):
+                    urls.append(data["storage_url"])
+                    continue
+
+                b64 = data.get("redacted_image_b64")
+                if not b64:
+                    raise HTTPException(status_code=502, detail="Gateway returned no redacted image")
+                png_bytes = base64.b64decode(b64)
+                url = upload_image_bytes(f"redacted-{f.filename or 'image'}.png", png_bytes, "image/png")
+                urls.append(url)
+        else:
+            for f in files:
+                raw = await f.read()
+                url = upload_image_bytes(f.filename, raw, f.content_type or "application/octet-stream")
+                urls.append(url)
         return {"urls": urls}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
