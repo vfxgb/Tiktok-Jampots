@@ -2,6 +2,10 @@ import os, base64, uuid, json, time, collections
 import httpx
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional, Literal
+from pydantic import BaseModel
+import time
+
 
 # ---- config
 VISION_URL = os.getenv("VISION_URL", "http://prismguard-vision:8081")
@@ -115,22 +119,51 @@ async def gateway_image(authorization: str | None = Header(None), file: UploadFi
         "attestation": "v1",
     }
 
+class TextReq(BaseModel):
+    text: str
+    mode: Literal["smart", "strict"] = "smart"
+
 @app.post("/v1/gateway/text")
-async def gateway_text(authorization: str | None = Header(None), body: dict = {}):
+async def gateway_text(
+    req: TextReq,
+    authorization: Optional[str] = Header(None),
+):
+    # In dev (no Firebase env), this returns "dev-user"
     uid = await verify_auth(authorization)
-    payload = {"text": body.get("text",""), "mode": body.get("mode","smart")}
-    # if you don't have the LLM service yet, return passthrough:
+
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="text is required")
+
+    # Passthrough mode if no LLM is configured
     if not LLM_URL:
-        return {"redacted_text": payload["text"], "entities": [], "timing_ms": 0.0, "attestation": "v1"}
+        data = {
+            "redacted_text": req.text,
+            "entities": [],
+            "timing_ms": 0.0,
+            "attestation": "v1",
+        }
+        try:
+            await supabase_insert_audit(uid, "text", [], 0.0)
+        except Exception:
+            pass
+        return data
+
     t0 = time.time()
     async with httpx.AsyncClient(timeout=60) as cli:
-        lr = await cli.post(f"{LLM_URL}/v1/anonymize/text", json=payload)
-        if lr.status_code != 200:
-            raise HTTPException(502, f"LLM error: {lr.text}")
-        data = lr.json()
+        resp = await cli.post(f"{LLM_URL}/v1/anonymize/text", json=req.model_dump())
+        resp.raise_for_status()
+        data = resp.json()
+
+    # Best-effort audit log
     try:
-        await supabase_insert_audit(uid, "text", data.get("entities", []), data.get("timing_ms", (time.time()-t0)*1000.0))
+        await supabase_insert_audit(
+            uid,
+            "text",
+            data.get("entities", []),
+            data.get("timing_ms", (time.time() - t0) * 1000.0),
+        )
     except Exception:
         pass
+
     data["attestation"] = "v1"
     return data

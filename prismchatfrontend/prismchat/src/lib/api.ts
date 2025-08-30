@@ -6,25 +6,6 @@ import type {
   SendResult,
 } from '../types/chat.js';
 
-// const envAny =
-//   (globalThis as any)?.__ENV__ ??
-//   (typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined) ??
-//   (typeof process !== 'undefined' ? (process as any).env : undefined);
-
-// const BASE: string =
-//   envAny?.VITE_API_URL ||
-//   envAny?.VITE_API ||
-//   envAny?.PRISMCHAT_API_URL ||
-//   'http://localhost:8080';
-
-// async function json<T>(res: Response): Promise<T> {
-//   if (!res.ok) {
-//     const txt = await res.text().catch(() => '');
-//     throw new Error(`API ${res.status}: ${txt || res.statusText}`);
-//   }
-//   return res.json() as Promise<T>;
-// }
-
 // List all conversations (for Sidebar)
 export async function listConversations(): Promise<ConversationSummary[]> {
   return Promise.resolve([

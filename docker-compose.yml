@@ -13,34 +13,21 @@ services:
       timeout: 3s
       retries: 6
 
-  # uncomment these once implemented @abhijeet
-  # prismguard-llm:
-  #   build: ./prismguard_llm
-  #   image: prismguard/llm:0.1.0
-  #   env_file:
-  #     - .env
-  #   ports:
-  #     - "8082:8082"
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-fsS", "http://localhost:8082/health"]
-  #     interval: 10s
-  #     timeout: 3s
-  #     retries: 6
-
-  # prismguard-orchestrator:
-  #   build: ./services/orchestrator
-  #   image: prismguard/orchestrator:0.1.0
-  #   env_file:
-  #     - .env
-  #   ports:
-  #     - "8083:8083"
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-fsS", "http://localhost:8083/health"]
-  #     interval: 10s
-  #     timeout: 3s
-  #     retries: 6
+  prismguard-llm:
+    build: ./prismguard_llm
+    image: prismguard/llm:0.1.0
+    env_file:
+      - .env
+    environment:
+      MODEL_DIR: /app/model
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
 
   prismguard-gateway:
     build: ./services/gateway
@@ -53,11 +40,8 @@ services:
     depends_on:
       prismguard-vision:
         condition: service_healthy
-      # uncomment once implemented @abhijeet
-      # prismguard-llm:
-      #   condition: service_healthy
-      # prismguard-orchestrator:
-      #   condition: service_healthy
+      prismguard-llm:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 10s
@@ -68,13 +52,12 @@ services:
     build: ./prismchatbackend
     image: prismchat/backend:0.1.0
     env_file:
-      - .env                    # uses the root .env (DB, Supabase, etc.)
+      - .env                   
     environment:
-      # override so backend calls gateway via the compose network
       PRISMGUARD_GATEWAY: http://prismguard-gateway:8080
     ports: ["8000:8000"]
     volumes:
-      - ./prismchatbackend/app:/app/app   # hot-reload dev loop
+      - ./prismchatbackend/app:/app/app  
     restart: unless-stopped
     depends_on:
       prismguard-gateway:
