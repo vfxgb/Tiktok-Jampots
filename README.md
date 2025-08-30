@@ -1,4 +1,4 @@
-# PrismGuard — Vision Branch (Minimal README)
+# PrismGuard - Vision Branch 
 
 > This branch has **Vision** + **Gateway** wired up.
 > Need to implement **`prismguard_llm`** (text redaction) and the **frontend**.
