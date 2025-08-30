@@ -63,3 +63,24 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+
+  prismchat-backend:
+    build: ./prismchatbackend
+    image: prismchat/backend:0.1.0
+    env_file:
+      - .env                    # uses the root .env (DB, Supabase, etc.)
+    environment:
+      # override so backend calls gateway via the compose network
+      PRISMGUARD_GATEWAY: http://prismguard-gateway:8080
+    ports: ["8000:8000"]
+    volumes:
+      - ./prismchatbackend/app:/app/app   # hot-reload dev loop
+    restart: unless-stopped
+    depends_on:
+      prismguard-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
