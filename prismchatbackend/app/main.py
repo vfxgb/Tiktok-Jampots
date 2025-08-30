@@ -16,6 +16,28 @@ app = FastAPI(title="PrismChat Backend", version="0.1.0")
 
 PRISMGUARD_GATEWAY = os.getenv("PRISMGUARD_GATEWAY", "http://localhost:8080")
 
+def _gateway_redact_text_sync(text: str, mode: str = "smart") -> str:
+    if not text.strip():
+        return text
+    try:
+        r = httpx.post(
+            f"{PRISMGUARD_GATEWAY}/v1/gateway/text",
+            json={"text": text, "mode": mode},
+            timeout=60,
+        )
+        r.raise_for_status()
+        return r.json().get("redacted_text", text)
+    except Exception:
+        # fail open: keep original if the gateway/LLM is down
+        return text
+
+async def _gateway_anonymize_text(text: str) -> dict:
+    async with httpx.AsyncClient(timeout=120) as cli:
+        r = await cli.post(f"{PRISMGUARD_GATEWAY}/v1/gateway/text",
+                           json={"text": text})
+        r.raise_for_status()
+        return r.json()
+
 async def _gateway_anonymize_image(file: UploadFile) -> dict:
     async with httpx.AsyncClient(timeout=120) as cli:
         files = {"file": (file.filename, await file.read(), file.content_type or "image/png")}
@@ -73,23 +95,27 @@ def chat(payload: SendPayload):
         if not conv_id:
             raise HTTPException(status_code=400, detail="conversationId is required")
 
-        # 1) Fetch history BEFORE inserting the current user turn
-        #    so we don't double-inject the same user text into the LLM
+        # 1) Load history BEFORE persisting the current user turn
         history = [m.model_dump(by_alias=True) for m in get_messages(conv_id)]
 
-        # 2) Run chain with existing history + current user input (not yet persisted)
+        # 2) PrismGuard text redaction (fail-open to original text if gateway fails)
         prismguard = payload.route == "prismguard"
-        answer = run_chain(history, payload.text, payload.images, prismguard=prismguard)
+        safe_text = payload.text
+        if prismguard and payload.text:
+            safe_text = _gateway_redact_text_sync(payload.text, mode="smart")
 
-        # 3) Now persist the current user turn (if present), then the assistant reply
-        if payload.text or payload.images:
-            insert_message(conv_id, role="user", content=payload.text or "", images=payload.images)
+        # 3) Run LLM with safe_text (if prismguard) and current images
+        answer = run_chain(history, safe_text, payload.images, prismguard=prismguard)
 
+        # 4) Persist current user turn (safe_text) then assistant reply
+        if safe_text or payload.images:
+            insert_message(conv_id, role="user", content=safe_text or "", images=payload.images)
         insert_message(conv_id, role="assistant", content=answer, images=[])
 
-        # 4) Return the updated thread
+        # 5) Return updated thread
         msgs = get_messages(conv_id)
         return {"conversationId": conv_id, "messages": msgs}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

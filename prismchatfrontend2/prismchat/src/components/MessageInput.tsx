@@ -30,7 +30,7 @@ export default function MessageInput({
     if (!list) return;
     const arr = Array.from(list).slice(0, 6);
     setFiles((prev) => [...prev, ...arr]);
-    // Allow selecting the same file again immediately
+    // Allow selecting the same file again right away
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -50,10 +50,21 @@ export default function MessageInput({
       conversationId,
       route,
       text: trimmed,
-      images: uploaded, // sendMessage handles conversion to plain URLs
+      images: uploaded, // sendMessage converts to plain URLs
     });
 
-    // 3) Keep UI showing ORIGINAL previews for the just-sent user turn
+    // 2a) Keep ORIGINAL text in the UI for this just-sent user turn
+    if (route === "prismguard" && trimmed) {
+      for (let i = res.messages.length - 1; i >= 0; i--) {
+        const m = res.messages[i];
+        if (m.role === "user") {
+          res.messages[i] = { ...m, content: trimmed };
+          break;
+        }
+      }
+    }
+
+    // 3) Keep UI showing ORIGINAL image previews for the just-sent user turn
     if (route === "prismguard" && uploaded.length) {
       const previews = uploaded.map((u) => u.previewUrl ?? u.storageUrl);
       for (let i = res.messages.length - 1; i >= 0; i--) {
@@ -65,7 +76,7 @@ export default function MessageInput({
       }
     }
 
-    // Reset input state so you can attach same file again
+    // 4) Reset input state so you can attach the same file again
     setText("");
     setFiles([]);
     if (fileRef.current) fileRef.current.value = "";
