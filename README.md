@@ -4,6 +4,8 @@
 
 PrismGuard is a comprehensive privacy-first conversational AI platform that protects Personally Identifiable Information (PII) before it ever reaches external AI services. Think of it as a **VPN for your prompts and images** - everything passes through PrismGuard's privacy layers first.
 
+Youtube Link for the Project Submission: https://youtu.be/a9anWGeS6T8 
+
 ---
 
 ## 🏗️ Complete System Architecture
