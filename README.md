@@ -52,15 +52,15 @@ Everything is **traced** with **LangSmith** for observability.
 
 ```mermaid
 flowchart TD
-    User[Next.js Chat UI] -->|/v1/chat & /v1/conversations| API[FastAPI (Docker)]
-    API -->|Runnable| Gemini[Google Gemini 2.0 Flash]
-    API -->|LangGraph state| Memory[Conversation Store (Supabase Postgres)]
+    User[Next.js Chat UI] -->|/v1/chat & /v1/conversations| API
+    API["FastAPI (Docker)"] -->|Runnable| Gemini[Google Gemini 2.0 Flash]
+    API -->|LangGraph state| Memory[(Supabase Postgres: Conversation Store)]
     API -->|Tracing| LangSmith[LangSmith]
     API -->|uploads| RawBucket[(Supabase Storage: prismchat)]
     API -->|redacted| RedBucket[(Supabase Storage: prismguard-redacted)]
     API --> PrismGuard[Text & Vision Redaction]
     PrismGuard --> TinyBERT[TinyBERT PII NER]
-    PrismGuard --> Vision[OCR + OpenCV Blur]
+    PrismGuard --> Vision[YOLO V8]
 ```
 
 ---
