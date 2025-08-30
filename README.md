@@ -69,7 +69,7 @@ docker compose up -d --build prismguard-gateway
 
 ---
 
-## SDK 
+## SDK (optional for convenience)
 
 ```bash
 pip install -e ./sdk
