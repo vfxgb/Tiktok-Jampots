@@ -256,11 +256,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   - `model.safetensors` (final weights)
 - Optional **TFLite** export (post-training quantization) to keep under **40 MB** for on-device.
 
-### Vision (OCR + Blur)
-- OCR (e.g., Tesseract or Google Vision) extracts candidate text regions.
+### Vision (YOLOv8 + Blur)
+- YOLOv8 detects sensitive regions directly (faces, IDs, license plates, text areas).
 - Heuristics + lightweight detectors mark faces/IDs.
-- **OpenCV** applies **Gaussian blur** to sensitive areas.
-- Only **redacted** image is persisted and surfaced to the UI.
+- Detected bounding boxes are passed to OpenCV, which applies Gaussian blur to those regions.
 
 ---
 
