@@ -210,7 +210,7 @@ I can help you with questions while keeping your privacy protected."
 ### 1️⃣ Environment Setup
 ```bash
 # Clone repository
-git clone https://github.com/your-org/prismguard
+git clone https://github.com/vfxgb/Tiktok-Jampots.git
 cd prismguard
 
 # Copy environment template
